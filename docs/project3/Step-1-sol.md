@@ -11,7 +11,6 @@ General note: this guide has been written assuming you use a Mac or Linux Comman
  Explore the files, in particular you can check:
 
   - How many reads there are per sample?
-    
     <details>
     <summary markdown="span">Solution 1</summary>
 
@@ -132,7 +131,8 @@ There are many different ways of performing the same task. If you have done some
     - `SLIDINGWINDOW`: consider a window of bases (here `4` at once) and trim once the average quality within the window falls below a threshold quality (here `15`). 
     - `MINLEN`: remove reads lower than the specified min length (here `36`)
     </details>
-    
+
+
 - How many files did trimmomatic generate? What do they contain?
     <details>
     <summary markdown="span">Solution</summary>
@@ -179,7 +179,6 @@ There are many different ways of performing the same task. If you have done some
 
     </details>
 - How many species are detected? How many are reference species and how many are unknown species?
-    
     <details>
     <summary markdown="span">Solution</summary>
     You can quickly check how many species were detected with:
@@ -210,7 +209,7 @@ There are many different ways of performing the same task. If you have done some
 
     To increase precision at the cost of recall you can increase parameters `-g` (default: 3) and -l (default: 75). 
 
-    ```
+    ```bash 
     motus profile -f sampleA_filterd_1P.fastq -r sampleA_filtered_2P.fastq -s sampleA_filtered_1U.fastq,sampleA_filtered_2U.fastq -n sampleA -o sampleA_profile_high_p.txt -g 8 -l 90
     ```
     We have detected just 37 species. 
@@ -238,6 +237,9 @@ There are many different ways of performing the same task. If you have done some
     ```
     This results in a tab-separated file containing the tax profiles. 
     </details>
+
+
+
 ## Taxonomic profiling with MAPseq
 
 - Similar as with mOTUs, first create a profile for each sample (A,B, and C) and then merge them into one (Check the [github page](https://github.com/jfmrod/MAPseq) for the command). 
@@ -266,7 +268,7 @@ There are many different ways of performing the same task. If you have done some
     If you have `-ti 0`, then `-tl` indicates the taxonomic level (0 (domain), 1 (phylum), 2 (class), 3 (order), 4 (family), 5 (genus), 6 (species)) . So if `-ti 0 -tl 3` means that the OTU table will report only read counts mapping to order-level NCBI taxonomies. 
 
     If you have `-ti 1`, then `-tl` indicates the OTU clustering level (1 (90% OTU), 2 (96% OTU), 3 (97% OTU), 4 (98%), 5 (99%)) . So if `-ti 1 -tl 3` means that the OTU table will report only read counts mapping to 97% OTUs. 
-    
+
     To obtain reads mapping to 99% OTUs : 
     ```bash
     mapseq -otutable sampleA.mseq sampleB.mseq sampleC.mseq -ti 0 -tl 5 > mapseq_otutable_otu99.tsv
@@ -294,9 +296,11 @@ There are many different ways of performing the same task. If you have done some
     | MAPseq 97% | 173                         |
     | MAPseq 99% | 121                         |
     | MAPseq 96% | 179                         |
-    
+
     It looks like mOTUs is a bit more conservative at detecting species. Note that since mOTUs and OTUs are defined differently, it might not be straightforward to make a direct comparison. 
     </details>
+
+
 
 
 
@@ -571,13 +575,74 @@ Here are some hints of what you can check:
   
 - How much variability there is within Subject (check the `metadata` table), compare to between subjects? Or from another perspective, how stable it is the human gut microbiome?
 
-<<<<<<< HEAD
-=======
     <details>
-    <summary markdown="span">Solution</summary>
+    <summary markdown="span">Solution 1</summary>
     
-    There are different ways to explore this problem.
-  
+    There are different ways to explore this problem. We can try to calculate the distance between all possible samples and then compare the distances of samples that come from the same subject and the distance that come from different subjects.
+    For example, you take sample 1 (`700002_T0`) and sample 2 (`700002_T1`), and since they are from the same subject, we will use the distance between these two samples as an example of *within-subject* distance.
+    
+    Code:
+    ```R
+    rel_ab = prop.table(tax_profile,2)
+    log_rel_ab = log10(rel_ab+ 10^-4)
+    
+    n_samples = ncol(log_rel_ab)
+    
+    # where to save the result
+    distance = c()
+    type = c()
+    
+    # we go through all the pair of samples and we calculate the distance
+    for(i in c(1: (n_samples-1) )){
+      for(j in c( (i+1) : n_samples)){
+        # name of the samples
+        s_i = colnames(log_rel_ab)[i]
+        s_j = colnames(log_rel_ab)[j]
+        # profiles
+        profile_i = log_rel_ab[,i]
+        profile_j = log_rel_ab[,j]
+        # calculate the distance as sum of the absolute distance
+        d = sum(abs(profile_i - profile_j))
+        # add the values
+        distance = c(distance,d)
+        # add correct type
+        if(metadata[s_i,"Subject"] == metadata[s_j,"Subject"]){
+          type = c(type,"Within distance")
+        }else{
+          type = c(type,"Between distance")
+        }
+      }
+    }
+    
+    df = data.frame(dist = distance,type = type)
+    
+    ggplot(df,aes(type,dist)) + geom_boxplot()
+    ```
+    
+    ![](../assets/images/Project3/step_1_distances.png)
+     
+    It is quite clear that they are different, but we can also test it:
+    ```R
+    wilcox.test(df[df$type == "Within distance",]$dist,
+                df[df$type == "Between distance",]$dist)
+    ```
+     
+    Result:
+    ```R
+    Wilcoxon rank sum test with continuity correction
+    
+    data:  df[df$type == "Within distance", ]$dist and df[df$type == "Between distance", ]$dist
+    W = 2844084, p-value < 2.2e-16
+    alternative hypothesis: true location shift is not equal to 0
+    ```
+    
+    This means that samples from the same subject have a low distance, or in other words they are similar to each other. And they are much more similar compared to other subjects, even after 1 year (the last time point is 50 weeks). From this we understand two things:
+    - First, the human microbiome is stable over time
+    - Second, there is a great variability between subjects
+
 
     </details>
->>>>>>> 54ce814c7708b41eb54b00e05ef645f338517909
+
+
+ 
+
